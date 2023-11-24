@@ -1,7 +1,7 @@
 use std::any::type_name;
 
 use itertools::Itertools;
-use uuid::Uuid;
+use uuid::{Uuid, uuid};
 use super::bytes::{FromSlice};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -67,7 +67,7 @@ impl ColumnDataType {
 
     fn from_bytes_to_string<T>(buf: &[u8]) -> Result<String, String>
     where T: FromSlice + ToString {
-        T::from_byte_buffer(buf)
+        T::from_slice(buf)
             .map(|t| t.to_string())
             .map_err(|_| format!("Could not parse byte buffer to {}", type_name::<T>()))
     }

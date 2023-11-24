@@ -251,16 +251,16 @@ impl WhereComparison {
                 comparison.operator.evaluate(&i, &comparison.value)
             }
             Self::Int32(comparison) => {
-                comparison.operator.evaluate(&i32::from_byte_buffer(buf).unwrap(), &comparison.value)
+                comparison.operator.evaluate(&i32::from_slice(buf).unwrap(), &comparison.value)
             },
             Self::UInt32(comparison) => {
-                comparison.operator.evaluate(&u32::from_byte_buffer(buf).unwrap(), &comparison.value)
+                comparison.operator.evaluate(&u32::from_slice(buf).unwrap(), &comparison.value)
             },
             Self::Int64(comparison) => {
-                comparison.operator.evaluate(&i64::from_byte_buffer(buf).unwrap(), &comparison.value)
+                comparison.operator.evaluate(&i64::from_slice(buf).unwrap(), &comparison.value)
             },
             Self::UInt64(comparison) => {
-                comparison.operator.evaluate(&u64::from_byte_buffer(buf).unwrap(), &comparison.value)
+                comparison.operator.evaluate(&u64::from_slice(buf).unwrap(), &comparison.value)
             },
             Self::UuidV4(comparison) => {
                 comparison.operator.evaluate(&Uuid::from_slice(&buf[..16]).unwrap(), &comparison.value)

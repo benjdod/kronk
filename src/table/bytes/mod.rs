@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 pub trait FromSlice: Sized {
     type Err;
-    fn from_byte_buffer(buf: &[u8]) -> Result<Self, Self::Err>;
+    fn from_slice(buf: &[u8]) -> Result<Self, Self::Err>;
 }
 
 pub trait ToNativeType<T> {
@@ -11,70 +11,69 @@ pub trait ToNativeType<T> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum NumericTypeConversionError {
+pub enum SizedTypeConversionError {
     InsufficientByteBufferSize(usize, usize)
 }
-
-impl ToNativeType<u32> for [u8] {
-    type Err = NumericTypeConversionError;
-    fn to_native_type(&self) -> Result<u32, Self::Err> {
-        let sized_buf: [u8; 4] = self[..4].try_into()
-            .map_err(|_| NumericTypeConversionError::InsufficientByteBufferSize(size_of::<u32>(), self.len()))?;
-        Ok(u32::from_le_bytes(sized_buf))
+fn to_native_type<T, const SZ: usize>(buf: &[u8], to_type: fn ([u8; SZ]) -> T) -> Result<T, SizedTypeConversionError> where T : Sized {
+    if buf.len() < SZ { 
+        Err(SizedTypeConversionError::InsufficientByteBufferSize(SZ, buf.len()))
+    } else {
+        Ok(to_type(<[u8; SZ]>::try_from(buf).unwrap()))
     }
 }
 
 impl ToNativeType<i32> for [u8] {
-    type Err = NumericTypeConversionError;
+    type Err = SizedTypeConversionError;
     fn to_native_type(&self) -> Result<i32, Self::Err> {
-        let sized_buf: [u8; 4] = self[..4].try_into()
-            .map_err(|_| NumericTypeConversionError::InsufficientByteBufferSize(size_of::<i32>(), self.len()))?;
-        Ok(i32::from_le_bytes(sized_buf))
+        to_native_type::<i32, 4>(self, |b| i32::from_le_bytes(b))
+    }
+}
+
+impl ToNativeType<u32> for [u8] {
+    type Err = SizedTypeConversionError;
+    fn to_native_type(&self) -> Result<u32, Self::Err> {
+        to_native_type::<u32, 4>(self, |b| u32::from_le_bytes(b))
     }
 }
 
 impl ToNativeType<u64> for [u8] {
-    type Err = NumericTypeConversionError;
+    type Err = SizedTypeConversionError;
     fn to_native_type(&self) -> Result<u64, Self::Err> {
-        let sized_buf: [u8; size_of::<u64>()] = self[..size_of::<u64>()].try_into()
-            .map_err(|_| NumericTypeConversionError::InsufficientByteBufferSize(size_of::<u64>(), self.len()))?;
-        Ok(u64::from_le_bytes(sized_buf))
+        to_native_type::<u64, 8>(self, |b| u64::from_le_bytes(b))
     }
 }
 
 impl ToNativeType<i64> for [u8] {
-    type Err = NumericTypeConversionError;
+    type Err = SizedTypeConversionError;
     fn to_native_type(&self) -> Result<i64, Self::Err> {
-        let sized_buf: [u8; size_of::<i64>()] = self[..size_of::<i64>()].try_into()
-            .map_err(|_| NumericTypeConversionError::InsufficientByteBufferSize(size_of::<i64>(), self.len()))?;
-        Ok(i64::from_le_bytes(sized_buf))
+        to_native_type::<i64, 8>(self, |b| i64::from_le_bytes(b))
     }
 }
 
 impl FromSlice for i32 {
-    type Err = NumericTypeConversionError;
-    fn from_byte_buffer(buf: &[u8]) -> Result<Self, Self::Err> {
+    type Err = SizedTypeConversionError;
+    fn from_slice(buf: &[u8]) -> Result<Self, Self::Err> {
         buf.to_native_type()
     }
 }
 
 impl FromSlice for u32 {
-    type Err = NumericTypeConversionError;
-    fn from_byte_buffer(buf: &[u8]) -> Result<Self, Self::Err> {
+    type Err = SizedTypeConversionError;
+    fn from_slice(buf: &[u8]) -> Result<Self, Self::Err> {
         buf.to_native_type()
     }
 }
 
 impl FromSlice for i64 {
-    type Err = NumericTypeConversionError;
-    fn from_byte_buffer(buf: &[u8]) -> Result<Self, Self::Err> {
+    type Err = SizedTypeConversionError;
+    fn from_slice(buf: &[u8]) -> Result<Self, Self::Err> {
         buf.to_native_type()
     }
 }
 
 impl FromSlice for u64 {
-    type Err = NumericTypeConversionError;
-    fn from_byte_buffer(buf: &[u8]) -> Result<Self, Self::Err> {
+    type Err = SizedTypeConversionError;
+    fn from_slice(buf: &[u8]) -> Result<Self, Self::Err> {
         buf.to_native_type()
     }
 }
