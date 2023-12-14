@@ -3,6 +3,8 @@ use std::str::FromStr;
 use itertools::Itertools;
 use uuid::Uuid;
 
+pub mod lex;
+
 use super::{
     schema::{TableColumn, TableDescriptor, ColumnDataType, DatabaseDescriptor, GetTableDescriptor},
     bytes::{FromSlice}
