@@ -1,5 +1,6 @@
 use std::{iter::{Peekable, Map}, cell::Cell};
 
+#[derive(Debug)]
 pub struct RawSelectQuery<'a> {
     pub table_name: String,
     pub table_identifier: Option<String>,
@@ -7,16 +8,19 @@ pub struct RawSelectQuery<'a> {
     pub where_expression: Option<RawSelectQueryWhereExpression<'a>>
 }
 
+#[derive(Debug)]
 pub struct RawSelectColumnReference {
     pub column_name: String,
     pub table_identifier: Option<String>
 }
 
+#[derive(Debug)]
 pub struct RawSelectQueryColumn {
     pub column: RawSelectColumnReference,
     pub as_name: Option<String>
 }
 
+#[derive(Debug)]
 pub enum RawSelectQueryWhereExpression<'a> {
     Single(RawSelectQueryWhereComparison),
     And(&'a RawSelectQueryWhereExpression<'a>, &'a RawSelectQueryWhereExpression<'a>),
@@ -24,6 +28,7 @@ pub enum RawSelectQueryWhereExpression<'a> {
     Not(&'a RawSelectQueryWhereExpression<'a>)
 }
 
+#[derive(Debug)]
 pub struct RawSelectQueryWhereComparison {
     pub column: RawSelectColumnReference,
     pub op: RawSelectQueryWhereExpressionOperator,
@@ -86,12 +91,12 @@ impl TryFrom<CharacterToken> for RawSelectQueryWhereExpressionOperator {
 
     fn try_from(value: CharacterToken) -> Result<Self, Self::Error> {
         match value {
-            GreaterThan => Ok(Self::GreaterThan),
-            GreaterEqual => Ok(Self::GreaterEqual),
-            LessThan => Ok(Self::LessThan),
-            LessEqual => Ok(Self::LessEqual),
-            EqualEqual => Ok(Self::EqualEqual),
-            NotEqual => Ok(Self::NotEqual),
+            CharacterToken::GreaterThan => Ok(Self::GreaterThan),
+            CharacterToken::GreaterEqual => Ok(Self::GreaterEqual),
+            CharacterToken::LessThan => Ok(Self::LessThan),
+            CharacterToken::LessEqual => Ok(Self::LessEqual),
+            CharacterToken::EqualEqual => Ok(Self::EqualEqual),
+            CharacterToken::NotEqual => Ok(Self::NotEqual),
             _ => Err(ParsingError::UnexpectedToken(QueryToken::Character(CharacterToken::Comma), QueryToken::Character(value)))
         }
     }
@@ -101,7 +106,8 @@ impl TryFrom<CharacterToken> for RawSelectQueryWhereExpressionOperator {
 pub enum QueryToken {
     Character(CharacterToken),
     Keyword(KeywordToken),
-    String(String)
+    String(String),
+    Eof
 }
 
 impl QueryToken {
@@ -302,7 +308,7 @@ impl<'a> Iterator for TokenIterator<'a> {
                     '=' | '<' | '>' | '!' => {
                         if self.next_char().is_none() { return Some(Err(LexingError::UnexpectedEndOfInput)) }
                         let sc = self.next_char().unwrap();
-                        match (fc, sc) {
+                        let o = match (fc, sc) {
                             ('=', '=') => Some(Ok(QueryToken::Character(CharacterToken::EqualEqual))),
                             ('!', '=') => Some(Ok(QueryToken::Character(CharacterToken::NotEqual))),
                             ('<', '=') => Some(Ok(QueryToken::Character(CharacterToken::LessEqual))),
@@ -310,7 +316,13 @@ impl<'a> Iterator for TokenIterator<'a> {
                             ('>', _) => Some(Ok(QueryToken::Character(CharacterToken::GreaterThan))),
                             ('<', _) => Some(Ok(QueryToken::Character(CharacterToken::LessThan))),
                             _ => Some(Err(self.set_err(LexingError::UnexpectedCharacter(fc))))
-                        }
+                        };
+
+                        if let Some(r) = o {
+                            self.advance();
+                            self.advance();
+                            Some(r)
+                        } else { None }
                     },
                     _ => {
                         Some(Err(self.set_err(LexingError::UnexpectedCharacter(fc))))
@@ -326,18 +338,20 @@ impl<'a> Iterator for TokenIterator<'a> {
 
 struct TokenParser<'a> {
     query: &'a str,
-    iterator: Peekable<Box<dyn Iterator<Item = Result<QueryToken, ParsingError>> + 'a>>
+    iterator: Peekable<Box<dyn Iterator<Item = Result<QueryToken, ParsingError>> + 'a>>,
+    current_token: Option<Result<QueryToken, ParsingError>>
 }
 
 impl<'a> TokenParser<'a> {
     pub fn new(query: &'a str) -> TokenParser<'a> {
         let i = TokenIterator::new(query).into_iter().map(|r| r.map_err(|e| <LexingError as Into<ParsingError>>::into(e)));
         let ib: Box<dyn Iterator<Item = Result<QueryToken, ParsingError>> + 'a> = Box::new(i);
-        return TokenParser { iterator: ib.peekable(), query: query };
+        return TokenParser { iterator: ib.peekable(), query: query, current_token: None };
     }
 
     fn next(&mut self) {
         self.iterator.next();
+        self.current_token = self.iterator.peek().map(|r| r.clone());
     }
 
     pub fn is_finished(&mut self) -> bool {
@@ -357,71 +371,117 @@ impl<'a> TokenParser<'a> {
         }
     }
 
+
+    // any keyword
+
+    fn match_is_keyword(&mut self) -> Result<(Option<KeywordToken>, QueryToken), ParsingError> {
+        let t = self.expect_current_token()?;
+        Ok((match t {
+            QueryToken::Keyword(c) => Some(c),
+            _ => None
+        }, t))
+
+    }
+
     pub fn expect_is_keyword(&mut self) -> Result<KeywordToken, ParsingError> {
+        self.match_is_keyword()
+            .and_then(|(c, t)| c.ok_or_else(|| ParsingError::UnexpectedToken(QueryToken::Keyword(KeywordToken::Select), t)))
+    }
+
+    pub fn is_keyword(&mut self) -> Result<bool, ParsingError> {
+        self.match_is_keyword().map(|(c, _)| c.is_some())
+    }
+
+
+    // a certain keyword
+
+    fn match_is_a_keyword(&mut self, keyword: KeywordToken) -> Result<(Option<KeywordToken>, QueryToken), ParsingError> {
         let t = self.expect_current_token()?;
-        match t {
-            QueryToken::Keyword(kt) => Ok(kt),
-            _ => Err(ParsingError::UnexpectedToken(QueryToken::Keyword(KeywordToken::From), t.clone())) 
-        }
-    }
-
-    pub fn is_keyword(&mut self) -> bool {
-        match self.expect_is_keyword() {
-            Ok(_) => true,
-            _ => false
-        }
-    }
-
-    pub fn expect_a_keyword(&mut self, keyword: KeywordToken) -> Result<QueryToken, ParsingError> {
-        let t = self.expect_current_token()?;
-        match t {
-            QueryToken::Keyword(kt) if kt == keyword => Ok(t),
-            _ => Err(ParsingError::UnexpectedToken(QueryToken::Keyword(keyword), t.clone())) 
-        }
-    }
-
-    pub fn consume_a_keyword(&mut self, keyword: KeywordToken) -> Result<QueryToken, ParsingError> {
-        let t = self.expect_current_token()?;
-        match t {
-            QueryToken::Keyword(kt) if kt == keyword => { Ok(t) },
-            _ => Err(ParsingError::UnexpectedToken(QueryToken::Keyword(keyword), t.clone())) 
-        }
-    }
-
-    pub fn maybe_consume_a_keyword(&mut self, keyword: KeywordToken) -> Result<bool, ParsingError> {
-        self.is_a_keyword(keyword).and_then(|_| { self.consume_token()?; Ok(true) })
+        Ok((match t {
+            QueryToken::Keyword(c) if c == keyword => Some(c),
+            _ => None
+        }, t))
     }
 
     pub fn is_a_keyword(&mut self, keyword: KeywordToken) -> Result<bool, ParsingError> {
-        self.expect_a_keyword(keyword).map(|_| true)
+        self.match_is_a_keyword(keyword).map(|(c, _)| c.is_some())
+    }
+
+    pub fn expect_is_a_keyword(&mut self, keyword: KeywordToken) -> Result<(), ParsingError> {
+        self.match_is_a_keyword(keyword)
+            .and_then(|(c, t)| c.map(|_| ()).ok_or_else(|| ParsingError::UnexpectedToken(QueryToken::Keyword(keyword), t)))
+    }
+
+    pub fn consume_a_keyword(&mut self, keyword: KeywordToken) -> Result<(), ParsingError> {
+        self.expect_is_a_keyword(keyword).and_then(|_| { self.consume_token()?; Ok(()) })
+    }
+
+    pub fn maybe_consume_a_keyword(&mut self, keyword: KeywordToken) -> Result<bool, ParsingError> {
+        self.is_a_keyword(keyword).and_then(|v| { if v { self.consume_token()?; } Ok(v) })
+    }
+
+
+    // any character
+
+    fn match_is_character(&mut self) -> Result<(Option<CharacterToken>, QueryToken), ParsingError> {
+        let t = self.expect_current_token()?;
+        Ok((match t {
+            QueryToken::Character(c) => Some(c),
+            _ => None
+        }, t))
     }
 
     pub fn expect_is_character(&mut self) -> Result<CharacterToken, ParsingError> {
-        let t = self.expect_current_token()?;
-        match t {
-            QueryToken::Character(ct) => Ok(ct),
-            _ => Err(ParsingError::UnexpectedToken(QueryToken::Keyword(KeywordToken::From), t.clone())) 
-        }
+        self.match_is_character()
+            .and_then(|(c, t)| c.ok_or_else(|| ParsingError::UnexpectedToken(QueryToken::Character(CharacterToken::Comma), t)))
     }
 
     pub fn is_character(&mut self) -> Result<bool, ParsingError> {
-        self.expect_is_character().map(|_| true)
+        self.match_is_character().map(|(c, _)| c.is_some())
     }
 
-    pub fn expect_a_character(&mut self, character: CharacterToken) -> Result<QueryToken, ParsingError> {
+    pub fn consume_character(&mut self) -> Result<CharacterToken, ParsingError> {
+        self.expect_is_character().and_then(|c| { self.consume_token()?; Ok(c) })
+    }
+
+
+    // a certain character
+
+    fn match_is_a_character(&mut self, character: CharacterToken) -> Result<(Option<CharacterToken>, QueryToken), ParsingError> {
         let t = self.expect_current_token()?;
-        match t {
-            QueryToken::Character(ct) if ct == character => Ok(t),
-            _ => Err(ParsingError::UnexpectedToken(QueryToken::Character(character), t.clone())) 
-        }
-    }
-
-    pub fn maybe_consume_a_character(&mut self, character: CharacterToken) -> Result<bool, ParsingError> {
-        self.is_a_character(character).and_then(|_| { self.consume_token()?; Ok(true) })
+        Ok((match t {
+            QueryToken::Character(c) if c == character => Some(c),
+            _ => None
+        }, t))
     }
 
     pub fn is_a_character(&mut self, character: CharacterToken) -> Result<bool, ParsingError> {
-        self.expect_a_character(character).map(|_| true)
+        self.match_is_a_character(character).map(|(c, _)| c.is_some())
+    }
+
+    pub fn expect_is_a_character(&mut self, character: CharacterToken) -> Result<(), ParsingError> {
+        self.match_is_a_character(character)
+            .and_then(|(c, t)| c.map(|_| ()).ok_or_else(|| ParsingError::UnexpectedToken(QueryToken::Character(character), t)))
+    }
+
+    pub fn consume_a_character(&mut self, character: CharacterToken) -> Result<(), ParsingError> {
+        self.expect_is_a_character(character).and_then(|_| { self.consume_token()?; Ok(()) })
+    }
+
+    pub fn maybe_consume_a_character(&mut self, character: CharacterToken) -> Result<bool, ParsingError> {
+        self.is_a_character(character).and_then(|v| { if v { self.consume_token()?; } Ok(v) })
+    }
+
+    fn match_is_string(&mut self) -> Result<Option<String>, ParsingError> {
+        let t = self.expect_current_token()?;
+        match t {
+            QueryToken::String(s) => Ok(Some(s)),
+            _ => Ok(None)
+        }
+    }
+
+    pub fn is_string(&mut self) -> Result<bool, ParsingError> {
+        self.match_is_string().map(|r| r.is_some())
     }
 
     pub fn expect_string(&mut self) -> Result<String, ParsingError> {
@@ -430,10 +490,6 @@ impl<'a> TokenParser<'a> {
             QueryToken::String(s) => { Ok(s) },
             _ => Err(ParsingError::UnexpectedToken(QueryToken::String(String::from("")), t.clone())) 
         }
-    }
-
-    pub fn is_string(&mut self) -> Result<bool, ParsingError> {
-        self.expect_string().map(|_| true)
     }
 
     pub fn consume_string(&mut self) -> Result<String, ParsingError> {
@@ -456,20 +512,28 @@ impl RawSelectQuery<'_> {
         parser.consume_a_keyword(KeywordToken::Select)?;
         let mut columns: Vec<RawSelectQueryColumn> = Vec::new();
 
-        while columns.len() == 0 || parser.is_a_character(CharacterToken::Comma)? {
-            parser.maybe_consume_a_character(CharacterToken::Comma)?;
+        while columns.len() == 0 || parser.maybe_consume_a_character(CharacterToken::Comma)? {
             columns.push(RawSelectQuery::parse_query_column(&mut parser)?);
         }
 
         parser.consume_a_keyword(KeywordToken::From)?;
 
         let table_name = parser.consume_string()?;
-        let table_identifier = if parser.is_string()? { Some(parser.consume_string()?) } else { None };
+        let table_identifier = if parser.is_finished() { None } else if parser.is_string()? { Some(parser.consume_string()?) } else { None };
+
+        if parser.is_finished() {
+            return Ok(RawSelectQuery {
+                table_name,
+                table_identifier,
+                columns,
+                where_expression: None
+            })
+        }
 
         let where_expression = if parser.maybe_consume_a_keyword(KeywordToken::Where)? {
             let column = RawSelectQuery::parse_column_reference(&mut parser)?;
             let op: RawSelectQueryWhereExpressionOperator = 
-                parser.expect_is_character().and_then(|c| c.try_into())?;
+                parser.consume_character().and_then(|c| c.try_into())?;
             let value = parser.consume_string()?;
             let ww = RawSelectQueryWhereComparison {
                 column,
