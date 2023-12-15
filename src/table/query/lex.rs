@@ -1,4 +1,4 @@
-use std::{iter::{Peekable, Map}, cell::Cell};
+use std::{iter::{Peekable, Map}, cell::Cell, ops::Range};
 
 #[derive(Debug)]
 pub struct RawSelectQuery<'a> {
@@ -107,7 +107,7 @@ pub enum QueryToken {
     Character(CharacterToken),
     Keyword(KeywordToken),
     String(String),
-    Eof
+    Number(String)
 }
 
 impl QueryToken {
@@ -127,6 +127,12 @@ impl QueryToken {
 
     fn expect_string(&self) -> Result<(), ParsingError> {
         if let QueryToken::String(_) = self { Ok(()) } else { Err(ParsingError::UnexpectedToken(QueryToken::String(String::from("")), self.clone()))}
+    }
+}
+
+impl From<KeywordToken> for QueryToken {
+    fn from(kw: KeywordToken) -> Self {
+        QueryToken::Keyword(kw)
     }
 }
 
@@ -208,6 +214,18 @@ impl<'a> TokenIterator<'a> {
         }
     }
 
+    fn range_while(&mut self, predicate: fn (char) -> bool) -> Range<usize> {
+        let start_idx = self.index;
+        self.advance_while(predicate);
+        Range { start: start_idx, end: self.index }
+    }
+
+    fn range_until(&mut self, predicate: fn (char) -> bool) -> Range<usize> {
+        let start_idx = self.index;
+        self.advance_until(predicate);
+        Range { start: start_idx, end: self.index }
+    }
+
     fn slice(&self, i: usize) -> &str {
         let ii = if i < self.token_string.len() { i } else { self.token_string.len() };
         if self.index < ii { &self.token_string[self.index..ii] } else { &self.token_string[ii..self.index] }
@@ -216,7 +234,6 @@ impl<'a> TokenIterator<'a> {
     fn consume_in_string(&mut self) -> Result<QueryToken, LexingError> {
         let mut esc = false;
         let mut acc = String::new();
-        let i = self.index;
 
         while self.chars_left() > 0 {
             let oc = self.current_char();
@@ -231,6 +248,8 @@ impl<'a> TokenIterator<'a> {
             if esc {
                 if c == '"' {
                     acc.push('"');
+                    esc = false;
+                    self.advance();
                     continue;
                 } else {
                     return Err(LexingError::InvalidEscapeCharacter(c))
@@ -239,9 +258,11 @@ impl<'a> TokenIterator<'a> {
 
             if c == '\\' {
                 esc = true;
+                self.advance();
                 continue;
             } 
 
+            self.advance();
             acc.push(c)
         }
 
@@ -273,26 +294,19 @@ impl<'a> Iterator for TokenIterator<'a> {
 
         if let Some(fc) = self.current_char() {
             if fc.is_alphabetic() {
-
-            }
-            let kw_match = 
-                if self.matches_keyword("select") {  Some(Ok(QueryToken::Keyword(KeywordToken::Select))) }
-            else if self.matches_keyword("where") { Some(Ok(QueryToken::Keyword(KeywordToken::Where))) }
-            else if self.matches_keyword("from") { Some(Ok(QueryToken::Keyword(KeywordToken::From))) }
-            else if self.matches_keyword("as") { Some(Ok(QueryToken::Keyword(KeywordToken::As))) }
-            else { None };
-
-            if kw_match.is_some() {
-                self.advance_while(|c| c.is_alphanumeric());
-                if self.is_end_or_whitespace() { kw_match } else {
-                    Some(Err(LexingError::UnexpectedEndOfInput))
-                }
-            }
-            else if fc.is_alphabetic() {
-                let i = self.index;
-                self.advance_while(|c| c.is_alphanumeric());
-                let j = self.index;
-                Some(Ok(QueryToken::String(self.token_string[i..j].to_string())))
+                let ss = self.next_alphabetic_string();
+                let o = Some(match ss {
+                    "select" => Ok(KeywordToken::Select.into()),
+                    "where" => Ok(KeywordToken::Where.into()),
+                    "from" => Ok(KeywordToken::From.into()),
+                    "as" => Ok(KeywordToken::As.into()),
+                    _ => Ok(QueryToken::String(ss.to_string())) 
+                });
+                self.advance_while(|c| c.is_alphabetic());
+                return o;
+            } else if fc.is_numeric() {
+                let r = self.range_while(|c| c.is_numeric());
+                Some(Ok(QueryToken::Number(self.token_string[r].to_string())))
             } else {
                 match fc {
                     '"' => {

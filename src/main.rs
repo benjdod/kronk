@@ -50,6 +50,6 @@ fn main() {
     // let res = db.query(&select_query);
     // dbg!(res);
 
-    let x = RawSelectQuery::parse_string("select author, date from books where author == glob");
+    let x = RawSelectQuery::parse_string("select b.author, b.date from books b where b.author == \"Billy \\\" McGee\"");
     println!("{:#?}", x);
 }
