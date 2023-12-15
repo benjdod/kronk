@@ -5,6 +5,8 @@ use uuid::Uuid;
 
 pub mod lex;
 
+use self::lex::{RawSelectQuery, RawSelectQueryWhereExpression};
+
 use super::{
     schema::{TableColumn, TableDescriptor, ColumnDataType, DatabaseDescriptor, GetTableDescriptor},
     bytes::{FromSlice}
@@ -280,6 +282,53 @@ impl WhereComparison {
 }
 
 impl<'a> SelectQuery<'a> {
+    pub fn parse_query_against_db(query: &RawSelectQuery, db_descriptor: &'a impl GetTableDescriptor) -> Result<SelectQuery<'a>, String> {
+        let table = db_descriptor.table_with_name(&query.table_name)
+            .ok_or_else(|| format!("Invalid query: no table '{}' exists", query.table_name))?;
+
+        let option_columns = query.columns[..].into_iter()
+            .map(|qc| table.column_for_name(&qc.column.column_name))
+            .collect::<Vec<_>>();
+
+        for c in option_columns[..].into_iter() {
+            if let None = c { return Err("Missing column!".to_owned()) }
+        }
+
+        let columns = option_columns[..].into_iter().map(|c| c.unwrap()).collect_vec();
+
+        let where_predicate = if let Some(where_expr) = &query.where_expression {
+            match where_expr {
+                RawSelectQueryWhereExpression::Single(wc) => {
+                   let column = table.column_for_name(&wc.column.column_name)
+                        .ok_or_else(|| "no such column".to_owned())?;
+
+                    let comparison = column.datatype.parse_where_comparison(&wc.op.to_string(), &wc.value)?;
+
+                    Some(WherePredicate {
+                        conditions: vec! [
+                            WhereCondition { 
+                                column,
+                                comparison
+                            }
+                        ]
+                    })
+                },
+                _ => None
+            }
+        } else { None };
+
+        Ok(SelectQuery {
+            table,
+            columns,
+            where_predicate
+        })
+    }
+
+    pub fn parse_raw_query_against_db(query: &str, db_descriptor: &'a impl GetTableDescriptor) -> Result<SelectQuery<'a>, String> {
+        let parsed_query = RawSelectQuery::parse_string(query).map_err(|_| "uh oh, bad parse buddy....")?;
+        Self::parse_query_against_db(&parsed_query, db_descriptor)
+    }
+
     pub fn parse_query_string(query: &str, db_descriptor: &'a impl GetTableDescriptor) -> Result<SelectQuery<'a>, String> {
         let tokens = query.trim().split_whitespace().collect::<Vec<&str>>();
 

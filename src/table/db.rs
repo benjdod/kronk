@@ -48,7 +48,7 @@ impl Database {
         let backing_store = self.table_stores.get(&query.table.table_name).expect("backing store here shold be populated");
 
         backing_store.mem
-            .chunks(query.table.total_size())
+            .chunks(query.table.total_row_size())
             .filter_map(|bytes| {
                 let id_column = query.table.id_column();
                 let row_id: u64 = str::parse(id_column.datatype.parse_bytes(&bytes[id_column.offset..]).unwrap().as_str()).unwrap();

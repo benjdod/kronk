@@ -15,10 +15,11 @@ pub enum SizedTypeConversionError {
     InsufficientByteBufferSize(usize, usize)
 }
 fn to_native_type<T, const SZ: usize>(buf: &[u8], to_type: fn ([u8; SZ]) -> T) -> Result<T, SizedTypeConversionError> where T : Sized {
-    if buf.len() < SZ { 
+    let o = size_of::<T>();
+    if buf.len() < SZ {
         Err(SizedTypeConversionError::InsufficientByteBufferSize(SZ, buf.len()))
     } else {
-        Ok(to_type(<[u8; SZ]>::try_from(buf).unwrap()))
+        Ok(to_type(<[u8; SZ]>::try_from(&buf[..o]).unwrap()))
     }
 }
 

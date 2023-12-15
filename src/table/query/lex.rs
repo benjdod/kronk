@@ -46,6 +46,19 @@ pub enum RawSelectQueryWhereExpressionOperator {
     NotEqual
 }
 
+impl ToString for RawSelectQueryWhereExpressionOperator {
+    fn to_string(&self) -> String {
+        (match self {
+            Self::GreaterThan => ">",
+            Self::GreaterEqual => ">=",
+            Self::LessThan => "<",
+            Self::LessEqual => "<=",
+            Self::EqualEqual => "==",
+            Self::NotEqual => "!="
+        }).to_owned()
+    }
+}
+
 #[derive(Debug)]
 struct TokenIterator<'a> {
     pub token_string: &'a str,
@@ -59,6 +72,19 @@ enum KeywordToken {
     From,
     Where,
     As
+}
+
+impl TryFrom<&str> for KeywordToken {
+    type Error = ();
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "select" => Ok(Self::Select),
+            "from" => Ok(Self::From),
+            "where" => Ok(Self::Where),
+            "as" => Ok(Self::As),
+            _ => Err(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -75,15 +101,6 @@ enum CharacterToken {
     LessEqual,
     EqualEqual,
     NotEqual
-}
-
-impl CharacterToken {
-    fn is_comparator(&self) -> bool {
-        match self {
-            Self::GreaterEqual | Self::GreaterThan | Self::LessEqual | Self::LessThan | Self::EqualEqual | Self::NotEqual => true,
-            _ => false
-        }
-    }
 }
 
 impl TryFrom<CharacterToken> for RawSelectQueryWhereExpressionOperator {
@@ -294,16 +311,12 @@ impl<'a> Iterator for TokenIterator<'a> {
 
         if let Some(fc) = self.current_char() {
             if fc.is_alphabetic() {
-                let ss = self.next_alphabetic_string();
-                let o = Some(match ss {
-                    "select" => Ok(KeywordToken::Select.into()),
-                    "where" => Ok(KeywordToken::Where.into()),
-                    "from" => Ok(KeywordToken::From.into()),
-                    "as" => Ok(KeywordToken::As.into()),
-                    _ => Ok(QueryToken::String(ss.to_string())) 
-                });
+                let ss = self.next_alphabetic_string();        
                 self.advance_while(|c| c.is_alphabetic());
-                return o;
+
+                Some(Ok(TryInto::<KeywordToken>::try_into(ss)
+                    .map(|kw| kw.into())
+                    .unwrap_or_else(|_| QueryToken::String(ss.to_string()))))
             } else if fc.is_numeric() {
                 let r = self.range_while(|c| c.is_numeric());
                 Some(Ok(QueryToken::Number(self.token_string[r].to_string())))

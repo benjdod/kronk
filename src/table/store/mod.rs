@@ -18,7 +18,7 @@ impl TableBackingStore {
     }
 
     pub fn insert_bytes_as_row(&mut self, descriptor: &TableDescriptor, bytes: &[u8]) -> Result<(), String> {
-        if bytes.len() != descriptor.total_size() {
+        if bytes.len() != descriptor.total_row_size() {
             Err("invalid table insertion".to_owned())
         } else {
             self.mem.extend(bytes);

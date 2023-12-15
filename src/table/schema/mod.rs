@@ -168,7 +168,7 @@ impl TableDescriptor {
         Ok(TableDescriptor { table_name: name.to_owned(), columns: cols })
     }
 
-    pub fn total_size(&self) -> usize {
+    pub fn total_row_size(&self) -> usize {
         let cols = &self.columns;
         cols.into_iter().map(|c| c.datatype.size_in_bytes()).sum()
     }
