@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-
+use std::io::prelude::*;
 use itertools::Itertools;
 
-use super::{schema::{DatabaseDescriptor, TableDescriptor, GetTableDescriptor}, store::{InMemoryByteStore, ByteStore}, query::SelectQuery};
+use super::{schema::{DatabaseDescriptor, TableDescriptor, GetTableDescriptor}, store::{InMemoryByteStore, ByteStore, FileByteStore}, query::SelectQuery};
 
 pub struct Database {
     descriptor: DatabaseDescriptor,
@@ -22,7 +22,8 @@ impl Database {
 
     pub fn add_table(&mut self, descriptor: TableDescriptor) -> Result<(), String> {
         let n = descriptor.table_name.clone();
-        self.table_stores.insert(n,  Box::new(InMemoryByteStore::new(&descriptor)));
+        let fbs = FileByteStore::new(&descriptor).unwrap();
+        self.table_stores.insert(n,  Box::new(fbs));
         self.descriptor.add_table(descriptor)?;
 
         Ok(())
@@ -46,25 +47,38 @@ impl Database {
     pub fn query(&self, query: &SelectQuery) -> Vec<(u64, Vec<(String, String)>)> {
         let backing_store = self.table_stores.get(&query.table.table_name).expect("backing store here shold be populated");
 
-        backing_store.read_all().unwrap()
-            .chunks(query.table.total_row_size())
-            .filter_map(|bytes| {
-                let id_column = query.table.id_column();
-                let row_id: u64 = str::parse(id_column.datatype.parse_bytes(&bytes[id_column.offset..]).unwrap().as_str()).unwrap();
+        let row_size = query.table.total_row_size();
 
-                let where_cond = match &query.where_predicate {
-                    Some(predicate) => predicate.conditions[..].into_iter()
-                        .all(|wc| wc.comparison.is_true(&bytes[wc.column.offset..])),
-                    None => true
-                };
+        let mut reader = backing_store.get_reader();
+        let mut dest_vec: Vec<u8> = Vec::new();
+        dest_vec.extend(std::iter::repeat(0u8).take(row_size));
+        let bytes = dest_vec.as_mut_slice();
 
-                if !where_cond { return None }
+        let mut out: Vec<(u64, Vec<(String, String)>)> = vec![];
 
-                let column_data = query.columns[..].into_iter()
-                    .map(|c| (c.name.to_owned(), c.datatype.parse_bytes(&bytes[c.offset..]).unwrap()))
-                    .collect_vec();
+        loop {
+            let bytes_read = reader.read(bytes).unwrap();
+            if bytes_read == 0 { break; }
+            if bytes_read != row_size { panic!("woah buddy, file size ain't right") }
 
-                Some((row_id, column_data))
-            }).collect()
+            let id_column = query.table.id_column();
+            let row_id: u64 = str::parse(id_column.datatype.parse_bytes(&bytes[id_column.offset..]).unwrap().as_str()).unwrap();
+
+            let where_cond = match &query.where_predicate {
+                Some(predicate) => predicate.conditions[..].into_iter()
+                    .all(|wc| wc.comparison.is_true(&bytes[wc.column.offset..])),
+                None => true
+            };
+
+            if !where_cond { continue; }
+
+            let column_data = query.columns[..].into_iter()
+                .map(|c| (c.name.to_owned(), c.datatype.parse_bytes(&bytes[c.offset..]).unwrap()))
+                .collect_vec();
+
+            out.push((row_id, column_data));
+        }
+
+        out
     }
 }

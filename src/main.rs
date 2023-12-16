@@ -1,6 +1,6 @@
 mod table;
 
-use std::io::prelude::*;
+use std::io::{prelude::*, BufReader};
 use std::fs::File;
 use std::path::Path;
 
@@ -65,12 +65,39 @@ fn run_db() {
         db.insert_columns("books", &ins[..]).unwrap();
     }
 
-    let select_query = SelectQuery::parse_raw_query_against_db("select id, title, author, year_published, us_based_publisher from books where year_published >= 1930", &db).unwrap();
+    let select_query = SelectQuery::parse_raw_query_against_db("select title, author from books where year_published >= 1935", &db).unwrap();
     let res = db.query(&select_query);
     dbg!(res);
 }
 
+fn reader () {
+    let mut buf: [u8; 64] = [0u8; 64];
+    buf[2] = 8u8;
+    let mut buf_reader = BufReader::new(buf.as_slice());
+    let mut dest_buf = [0u8; 1024];
+    let bytes_read = buf_reader.read(&mut dest_buf).unwrap();
+    dbg!(bytes_read);
+}
+
+fn run_select_query() {
+    let mut db = Database::new("my_db");
+    db.add_table(TableDescriptor::new("books", vec![
+        ("id", ColumnDataType::SerialId),
+        ("author", ColumnDataType::Byte(64)),
+        ("title", ColumnDataType::Byte(64)),
+        ("year_published", ColumnDataType::Int32),
+        ("us_based_publisher", ColumnDataType::Boolean)
+    ]).unwrap()).unwrap();
+
+    let mut q = String::new();
+    std::io::stdin().read_line(&mut q).unwrap();
+
+    let select_query = SelectQuery::parse_raw_query_against_db(q.trim(), &db).unwrap();
+    let res = db.query(&select_query);
+    dbg!(res);
+}
 
 fn main() {
-    run_db();
+    // run_db()
+    run_select_query();
 }
