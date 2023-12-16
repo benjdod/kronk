@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 itertools = "0.12.0"
 thiserror = "1.0.50"
+anyhow = "1.0.75"
 
 [dependencies.uuid]
 version = "1.6.1"

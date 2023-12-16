@@ -4,8 +4,10 @@ use itertools::Itertools;
 use uuid::Uuid;
 
 pub mod lex;
+pub mod parse;
 
 use self::lex::{RawSelectQuery, RawSelectQueryWhereExpression};
+use self::parse::RawParse;
 
 use super::{
     schema::{TableColumn, TableDescriptor, ColumnDataType, DatabaseDescriptor, GetTableDescriptor},
@@ -325,7 +327,7 @@ impl<'a> SelectQuery<'a> {
     }
 
     pub fn parse_raw_query_against_db(query: &str, db_descriptor: &'a impl GetTableDescriptor) -> Result<SelectQuery<'a>, String> {
-        let parsed_query = RawSelectQuery::parse_string(query).map_err(|_| "uh oh, bad parse buddy....")?;
+        let parsed_query = RawParse::parse_string(query).map_err(|_| "uh oh, bad parse buddy....")?;
         Self::parse_query_against_db(&parsed_query, db_descriptor)
     }
 
