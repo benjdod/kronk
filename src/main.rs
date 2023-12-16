@@ -1,14 +1,18 @@
 mod table;
 
+use std::io::prelude::*;
+use std::fs::File;
+use std::path::Path;
+
 use table::schema::{TableDescriptor, ColumnDataType, DatabaseDescriptor};
-use table::store::TableBackingStore;
+use table::store::InMemoryByteStore;
 use table::query::{SelectQuery};
 use table::bytes::{ToNativeType};
 use table::query::lex::RawSelectQuery;
 
 use crate::table::db::Database;
 
-fn main() {
+fn run_db() {
     let mut db = Database::new("my_db");
     db.add_table(TableDescriptor::new("books", vec![
         ("id", ColumnDataType::SerialId),
@@ -35,6 +39,22 @@ fn main() {
             ("year_published", "1923")
         ],
         vec![
+            ("author", "Stink Williams"),
+            ("title", "Dancing for the Everyday Man"),
+            ("year_published", "1937"),
+            ("us_based_publisher", "true")
+        ],
+        vec![
+            ("author", "Stink Williams"),
+            ("title", "O My Friend, How Art Thee"),
+            ("year_published", "1924")
+        ],
+        vec![
+            ("author", "Stink Williams"),
+            ("title", "Singing for Woodland Creatures"),
+            ("year_published", "1923")
+        ],
+        vec![
             ("author", "joseph"),
             ("title", "My Lumps My Bumps"),
             ("year_published", "1917")
@@ -45,7 +65,12 @@ fn main() {
         db.insert_columns("books", &ins[..]).unwrap();
     }
 
-    let select_query = SelectQuery::parse_raw_query_against_db("select id, title, author from books where author == \"Stink Williams\"", &db).unwrap();
+    let select_query = SelectQuery::parse_raw_query_against_db("select id, title, author, year_published, us_based_publisher from books where year_published >= 1930", &db).unwrap();
     let res = db.query(&select_query);
     dbg!(res);
+}
+
+
+fn main() {
+    run_db();
 }

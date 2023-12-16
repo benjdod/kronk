@@ -123,8 +123,7 @@ impl TryFrom<CharacterToken> for RawSelectQueryWhereExpressionOperator {
 pub enum QueryToken {
     Character(CharacterToken),
     Keyword(KeywordToken),
-    String(String),
-    Number(String)
+    String(String)
 }
 
 impl QueryToken {
@@ -295,7 +294,11 @@ impl<'a> TokenIterator<'a> {
         let mut ending_index = 0usize;
         let sliced = &self.token_string[self.index..];
         while let Some(c) = sliced.chars().nth(ending_index) {
-            if c.is_alphabetic() { ending_index += 1; } else { break; }
+            let cond = if ending_index > 0 {
+                c.is_alphanumeric() || c == '_'
+            } else { c.is_alphabetic() };
+
+            if cond { ending_index += 1; } else { break; }
         }
         &self.token_string[(self.index)..(self.index + ending_index)]
     }
@@ -312,14 +315,14 @@ impl<'a> Iterator for TokenIterator<'a> {
         if let Some(fc) = self.current_char() {
             if fc.is_alphabetic() {
                 let ss = self.next_alphabetic_string();        
-                self.advance_while(|c| c.is_alphabetic());
+                self.advance_by(ss.len());
 
                 Some(Ok(TryInto::<KeywordToken>::try_into(ss)
                     .map(|kw| kw.into())
                     .unwrap_or_else(|_| QueryToken::String(ss.to_string()))))
             } else if fc.is_numeric() {
                 let r = self.range_while(|c| c.is_numeric());
-                Some(Ok(QueryToken::Number(self.token_string[r].to_string())))
+                Some(Ok(QueryToken::String(self.token_string[r].to_string())))
             } else {
                 match fc {
                     '"' => {
@@ -362,7 +365,6 @@ impl<'a> Iterator for TokenIterator<'a> {
     }
 
 }
-
 struct TokenParser<'a> {
     query: &'a str,
     iterator: Peekable<Box<dyn Iterator<Item = Result<QueryToken, ParsingError>> + 'a>>,

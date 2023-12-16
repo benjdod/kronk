@@ -2,12 +2,11 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 
-use super::{schema::{DatabaseDescriptor, TableDescriptor, GetTableDescriptor}, store::TableBackingStore, query::SelectQuery};
+use super::{schema::{DatabaseDescriptor, TableDescriptor, GetTableDescriptor}, store::{InMemoryByteStore, ByteStore}, query::SelectQuery};
 
-#[derive(Debug)]
 pub struct Database {
     descriptor: DatabaseDescriptor,
-    table_stores: HashMap<String, TableBackingStore>
+    table_stores: HashMap<String, Box<dyn ByteStore>>
 }
 
 impl Database {
@@ -23,7 +22,7 @@ impl Database {
 
     pub fn add_table(&mut self, descriptor: TableDescriptor) -> Result<(), String> {
         let n = descriptor.table_name.clone();
-        self.table_stores.insert(n, TableBackingStore::new(&descriptor));
+        self.table_stores.insert(n,  Box::new(InMemoryByteStore::new(&descriptor)));
         self.descriptor.add_table(descriptor)?;
 
         Ok(())
@@ -47,7 +46,7 @@ impl Database {
     pub fn query(&self, query: &SelectQuery) -> Vec<(u64, Vec<(String, String)>)> {
         let backing_store = self.table_stores.get(&query.table.table_name).expect("backing store here shold be populated");
 
-        backing_store.mem
+        backing_store.read_all().unwrap()
             .chunks(query.table.total_row_size())
             .filter_map(|bytes| {
                 let id_column = query.table.id_column();
