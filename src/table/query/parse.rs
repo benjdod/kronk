@@ -1,6 +1,7 @@
 use std::iter::Peekable;
 
-use super::lex::{RawSelectQuery, ParsingError, LexingError, QueryToken, TokenIterator, RawSelectColumnReference, KeywordToken, CharacterToken, RawSelectQueryColumn, RawSelectQueryWhereExpressionOperator, RawSelectQueryWhereComparison, RawSelectQueryWhereExpression};
+use super::lex::{RawSelectQuery, QueryToken, TokenIterator, RawSelectColumnReference, KeywordToken, CharacterToken, RawSelectQueryColumn, RawSelectQueryWhereExpressionOperator, RawSelectQueryWhereComparison, RawSelectQueryWhereExpression};
+use super::types::{LexingError, ParsingError};
 
 pub struct RawParse {}
 

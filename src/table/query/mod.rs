@@ -3,6 +3,7 @@ use std::str::FromStr;
 use itertools::Itertools;
 use uuid::Uuid;
 
+pub mod types;
 pub mod lex;
 pub mod parse;
 

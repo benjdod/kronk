@@ -1,4 +1,5 @@
-use std::{iter::{Peekable, Map}, cell::Cell, ops::Range};
+use std::{iter::{Peekable, Map}, cell::Cell, ops::Range, fmt::{Display, write}};
+use super::types::*;
 
 #[derive(Debug)]
 pub struct RawSelectQuery<'a> {
@@ -87,6 +88,23 @@ impl TryFrom<&str> for KeywordToken {
     }
 }
 
+impl ToStaticStr for KeywordToken {
+    fn static_str(&self) -> &'static str {
+        match self {
+            KeywordToken::As => "as",
+            KeywordToken::From => "from",
+            KeywordToken::Select => "select",
+            KeywordToken::Where => "where"
+        }
+    }
+}
+
+impl Display for KeywordToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", Self::static_str(&self))
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CharacterToken {
     LeftParen,
@@ -101,6 +119,35 @@ pub enum CharacterToken {
     LessEqual,
     EqualEqual,
     NotEqual
+}
+
+trait ToStaticStr {
+    fn static_str(&self) -> &'static str;
+}
+
+impl ToStaticStr for CharacterToken {
+    fn static_str(&self) -> &'static str {
+        match self {
+            CharacterToken::Comma => ",",
+            CharacterToken::Dot => ".",
+            CharacterToken::EqualEqual => "==",
+            CharacterToken::NotEqual => "!=",
+            CharacterToken::GreaterEqual => ">=",
+            CharacterToken::LessEqual => "<=",
+            CharacterToken::LessThan => "<",
+            CharacterToken::GreaterThan => ">",
+            CharacterToken::LeftParen => "(",
+            CharacterToken::RightParen => ")",
+            CharacterToken::LeftBracket => "{",
+            CharacterToken::RightBracket => "}",
+        }
+    }
+}
+
+impl Display for CharacterToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", Self::static_str(&self))
+    }
 }
 
 impl TryFrom<CharacterToken> for RawSelectQueryWhereExpressionOperator {
@@ -124,6 +171,16 @@ pub enum QueryToken {
     Character(CharacterToken),
     Keyword(KeywordToken),
     String(String)
+}
+
+impl std::fmt::Display for QueryToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Character(c) => write!(f, "char({})", c),
+            Self::Keyword(k) => write!(f, "kw({})", k),
+            Self::String(s) => write!(f, "string({})", s)
+        }
+    }
 }
 
 impl QueryToken {
@@ -152,27 +209,6 @@ impl From<KeywordToken> for QueryToken {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ParsingError {
-    Lexing(LexingError),
-    UnexpectedToken(QueryToken, QueryToken),
-    UnexpectedEndOfInput,
-    InvalidSyntax
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum LexingError {
-    InvalidSyntax,
-    UnexpectedEndOfInput,
-    UnexpectedCharacter(char),
-    InvalidEscapeCharacter(char)
-}
-
-impl From<LexingError> for ParsingError {
-    fn from(value: LexingError) -> Self {
-        Self::Lexing(value)
-    }
-}
 
 impl<'a> TokenIterator<'a> {
     pub fn new(token_string: &'a str) -> TokenIterator<'a> {
