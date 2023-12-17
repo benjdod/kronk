@@ -1,64 +1,6 @@
 use std::{iter::{Peekable, Map}, cell::Cell, ops::Range, fmt::{Display, write}};
 use super::types::*;
 
-#[derive(Debug)]
-pub struct RawSelectQuery<'a> {
-    pub table_name: String,
-    pub table_identifier: Option<String>,
-    pub columns: Vec<RawSelectQueryColumn>,
-    pub where_expression: Option<RawSelectQueryWhereExpression<'a>>
-}
-
-#[derive(Debug)]
-pub struct RawSelectColumnReference {
-    pub column_name: String,
-    pub table_identifier: Option<String>
-}
-
-#[derive(Debug)]
-pub struct RawSelectQueryColumn {
-    pub column: RawSelectColumnReference,
-    pub as_name: Option<String>
-}
-
-#[derive(Debug)]
-pub enum RawSelectQueryWhereExpression<'a> {
-    Single(RawSelectQueryWhereComparison),
-    And(&'a RawSelectQueryWhereExpression<'a>, &'a RawSelectQueryWhereExpression<'a>),
-    Or(&'a RawSelectQueryWhereExpression<'a>, &'a RawSelectQueryWhereExpression<'a>),
-    Not(&'a RawSelectQueryWhereExpression<'a>)
-}
-
-#[derive(Debug)]
-pub struct RawSelectQueryWhereComparison {
-    pub column: RawSelectColumnReference,
-    pub op: RawSelectQueryWhereExpressionOperator,
-    pub value: String
-}
-
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum RawSelectQueryWhereExpressionOperator {
-    GreaterThan,
-    GreaterEqual,
-    LessThan,
-    LessEqual,
-    EqualEqual,
-    NotEqual
-}
-
-impl ToString for RawSelectQueryWhereExpressionOperator {
-    fn to_string(&self) -> String {
-        (match self {
-            Self::GreaterThan => ">",
-            Self::GreaterEqual => ">=",
-            Self::LessThan => "<",
-            Self::LessEqual => "<=",
-            Self::EqualEqual => "==",
-            Self::NotEqual => "!="
-        }).to_owned()
-    }
-}
 
 #[derive(Debug)]
 pub struct TokenIterator<'a> {
@@ -72,7 +14,9 @@ pub enum KeywordToken {
     Select,
     From,
     Where,
-    As
+    As,
+    Insert,
+    Into
 }
 
 impl TryFrom<&str> for KeywordToken {
@@ -83,6 +27,8 @@ impl TryFrom<&str> for KeywordToken {
             "from" => Ok(Self::From),
             "where" => Ok(Self::Where),
             "as" => Ok(Self::As),
+            "insert" => Ok(Self::Insert),
+            "into" => Ok(Self::Into),
             _ => Err(())
         }
     }
@@ -94,7 +40,9 @@ impl ToStaticStr for KeywordToken {
             KeywordToken::As => "as",
             KeywordToken::From => "from",
             KeywordToken::Select => "select",
-            KeywordToken::Where => "where"
+            KeywordToken::Where => "where",
+            KeywordToken::Insert => "insert",
+            KeywordToken::Into => "into"
         }
     }
 }
@@ -113,6 +61,7 @@ pub enum CharacterToken {
     RightBracket,
     Dot,
     Comma,
+    Equal,
     GreaterThan,
     GreaterEqual,
     LessThan,
@@ -130,6 +79,7 @@ impl ToStaticStr for CharacterToken {
         match self {
             CharacterToken::Comma => ",",
             CharacterToken::Dot => ".",
+            CharacterToken::Equal => "=",
             CharacterToken::EqualEqual => "==",
             CharacterToken::NotEqual => "!=",
             CharacterToken::GreaterEqual => ">=",
@@ -375,20 +325,20 @@ impl<'a> Iterator for TokenIterator<'a> {
                         if self.next_char().is_none() { return Some(Err(LexingError::UnexpectedEndOfInput)) }
                         let sc = self.next_char().unwrap();
                         let o = match (fc, sc) {
-                            ('=', '=') => Some(Ok(QueryToken::Character(CharacterToken::EqualEqual))),
-                            ('!', '=') => Some(Ok(QueryToken::Character(CharacterToken::NotEqual))),
-                            ('<', '=') => Some(Ok(QueryToken::Character(CharacterToken::LessEqual))),
-                            ('>', '=') => Some(Ok(QueryToken::Character(CharacterToken::GreaterEqual))),
-                            ('>', _) => Some(Ok(QueryToken::Character(CharacterToken::GreaterThan))),
-                            ('<', _) => Some(Ok(QueryToken::Character(CharacterToken::LessThan))),
-                            _ => Some(Err(self.set_err(LexingError::UnexpectedCharacter(fc))))
+                            ('=', '=') => Ok(CharacterToken::EqualEqual),
+                            ('=', _) => Ok(CharacterToken::Equal),
+                            ('!', '=') => Ok(CharacterToken::NotEqual),
+                            ('<', '=') => Ok(CharacterToken::LessEqual),
+                            ('>', '=') => Ok(CharacterToken::GreaterEqual),
+                            ('>', _) => Ok(CharacterToken::GreaterThan),
+                            ('<', _) => Ok(CharacterToken::LessThan),
+                            _ => Err(self.set_err(LexingError::UnexpectedCharacter(fc)))
                         };
 
-                        if let Some(r) = o {
-                            self.advance();
-                            self.advance();
-                            Some(r)
-                        } else { None }
+                        if let Ok(c) = o {
+                            self.advance_by(c.static_str().len())
+                        }
+                        Some(o.map(|c| QueryToken::Character(c)))
                     },
                     _ => {
                         Some(Err(self.set_err(LexingError::UnexpectedCharacter(fc))))

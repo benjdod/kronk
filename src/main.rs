@@ -4,13 +4,16 @@ use std::io::{prelude::*, BufReader};
 use std::fs::File;
 use std::path::Path;
 
+use itertools::Itertools;
 use table::schema::{TableDescriptor, ColumnDataType, DatabaseDescriptor};
 use table::store::InMemoryByteStore;
 use table::query::{SelectQuery};
 use table::bytes::{ToNativeType};
-use table::query::lex::RawSelectQuery;
+use table::query::types::RawSelectQuery;
 
 use crate::table::db::Database;
+use crate::table::query::parse::RawParse;
+use crate::table::query::types::RawDbCommand;
 
 fn run_db() {
     let mut db = Database::new("my_db");
@@ -92,9 +95,27 @@ fn run_select_query() {
     let mut q = String::new();
     std::io::stdin().read_line(&mut q).unwrap();
 
-    let select_query = SelectQuery::parse_raw_query_against_db(q.trim(), &db).unwrap();
-    let res = db.query(&select_query);
-    dbg!(res);
+    let cmd = RawParse::parse(q.as_str());
+
+    match cmd {
+        Ok(c) => match c {
+            RawDbCommand::Insert(i) => {
+                let mapped_args = i.values.into_iter()
+                    .map(|(c, v)| (c.as_str(), v.as_str()))
+                    .collect_vec()
+                    .as_slice();
+                db.insert_columns(&i.table_name, mapped_args).unwrap();
+            },
+            RawDbCommand::Select(s) => {
+                let select_query = SelectQuery::parse_raw_query_against_db(q.trim(), &db).unwrap();
+                let res = db.query(&select_query);
+                dbg!(res);
+            }
+        },
+        Err(e) => {
+            dbg!(e);
+        }
+    }
 }
 
 fn main() {

@@ -7,7 +7,7 @@ pub mod types;
 pub mod lex;
 pub mod parse;
 
-use self::lex::{RawSelectQuery, RawSelectQueryWhereExpression};
+use self::types::{RawSelectQuery, RawSelectQueryWhereExpression, RawDbCommand};
 use self::parse::RawParse;
 
 use super::{
@@ -328,8 +328,12 @@ impl<'a> SelectQuery<'a> {
     }
 
     pub fn parse_raw_query_against_db(query: &str, db_descriptor: &'a impl GetTableDescriptor) -> Result<SelectQuery<'a>, String> {
-        let parsed_query = RawParse::parse_string(query).map_err(|_| "uh oh, bad parse buddy....")?;
-        Self::parse_query_against_db(&parsed_query, db_descriptor)
+        let q = RawParse::parse(query).map_err(|_| "uh oh spagehtti ohs.")?;
+        if let RawDbCommand::Select(s) = q {
+            Self::parse_query_against_db(&s, db_descriptor)
+        } else {
+            Err("Database command was not a select statement".into())
+        }
     }
 
     pub fn parse_query_string(query: &str, db_descriptor: &'a impl GetTableDescriptor) -> Result<SelectQuery<'a>, String> {

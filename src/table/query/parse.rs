@@ -1,13 +1,45 @@
 use std::iter::Peekable;
 
-use super::lex::{RawSelectQuery, QueryToken, TokenIterator, RawSelectColumnReference, KeywordToken, CharacterToken, RawSelectQueryColumn, RawSelectQueryWhereExpressionOperator, RawSelectQueryWhereComparison, RawSelectQueryWhereExpression};
-use super::types::{LexingError, ParsingError};
+use super::lex::{QueryToken, TokenIterator, KeywordToken, CharacterToken};
+use super::types::{RawSelectQuery, RawSelectColumnReference, RawSelectQueryColumn, RawSelectQueryWhereExpressionOperator, RawSelectQueryWhereComparison, RawSelectQueryWhereExpression, LexingError, ParsingError, RawInsertStatement, RawDbCommand};
 
 pub struct RawParse {}
 
 impl RawParse {
-    pub fn parse_string(query: &str) -> Result<RawSelectQuery<'_>, ParsingError> {
-        let mut parser = TokenParser::new(query);
+    pub fn parse(cmd: &str) -> Result<RawDbCommand<'_>, ParsingError> {
+        let mut parser = TokenParser::new(cmd);
+
+        if parser.is_a_keyword(KeywordToken::Select)? {
+            Self::parse_select(parser).map(|s| RawDbCommand::Select(s))
+        } else if parser.is_a_keyword(KeywordToken::Insert)? {
+            Self::parse_insert(parser).map(|i| RawDbCommand::Insert(i))
+        } else {
+            Err(ParsingError::UnexpectedToken(QueryToken::Keyword(KeywordToken::Select), parser.expect_current_token()?))
+        }
+    }
+
+    fn parse_insert(mut parser: TokenParser) -> Result<RawInsertStatement, ParsingError> {
+        parser.consume_a_keyword(KeywordToken::Insert)?;
+        parser.consume_a_keyword(KeywordToken::Into)?;
+        
+        let table_name = parser.consume_string()?;
+        
+        let mut values: Vec<(String, String)> = vec![];
+
+        while !parser.is_finished() {
+            let column_name = parser.consume_string()?;
+            parser.consume_a_character(CharacterToken::Equal)?;
+            let value = parser.consume_string()?;
+            values.push((column_name, value));
+        }
+
+        Ok(RawInsertStatement {
+            table_name,
+            values
+        })
+    }
+
+    fn parse_select(mut parser: TokenParser) -> Result<RawSelectQuery<'_>, ParsingError> {
         parser.consume_a_keyword(KeywordToken::Select)?;
         let mut columns: Vec<RawSelectQueryColumn> = Vec::new();
 
@@ -85,7 +117,6 @@ impl RawParse {
 }
 
 struct TokenParser<'a> {
-    query: &'a str,
     iterator: Peekable<Box<dyn Iterator<Item = Result<QueryToken, ParsingError>> + 'a>>,
     current_token: Option<Result<QueryToken, ParsingError>>
 }
@@ -94,7 +125,7 @@ impl<'a> TokenParser<'a> {
     pub fn new(query: &'a str) -> TokenParser<'a> {
         let i = TokenIterator::new(query).into_iter().map(|r| r.map_err(|e| <LexingError as Into<ParsingError>>::into(e)));
         let ib: Box<dyn Iterator<Item = Result<QueryToken, ParsingError>> + 'a> = Box::new(i);
-        return TokenParser { iterator: ib.peekable(), query: query, current_token: None };
+        return TokenParser { iterator: ib.peekable(), current_token: None };
     }
 
     fn next(&mut self) {
@@ -139,7 +170,6 @@ impl<'a> TokenParser<'a> {
     pub fn is_keyword(&mut self) -> Result<bool, ParsingError> {
         self.match_is_keyword().map(|(c, _)| c.is_some())
     }
-
 
     // a certain keyword
 
